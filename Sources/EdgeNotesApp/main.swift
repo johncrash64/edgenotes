@@ -5,6 +5,7 @@ import EdgeNotesCore
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var store: NoteStore?
     private var controller: EdgePanelController?
+    private var editor: EditorController?
     private var statusItem: NSStatusItem?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -15,7 +16,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         store.seedIfEmpty()
         self.store = store
 
+        let editor = EditorController(store: store)
+        self.editor = editor
+
         let controller = EdgePanelController(store: store)
+        controller.onEditNote = { [weak editor] id in editor?.open(noteID: id) }
         controller.show()
         self.controller = controller
 

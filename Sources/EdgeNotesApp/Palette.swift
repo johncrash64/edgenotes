@@ -17,6 +17,11 @@ enum Palette {
         Color(nsColor: nsColor(color).blended(withFraction: 0.35, of: .white) ?? .white)
     }
 
+    /// Light pastel for the resting dashes.
+    static func dash(_ color: NoteColor) -> Color {
+        Color(nsColor: nsColor(color).blended(withFraction: 0.5, of: .white) ?? .white)
+    }
+
     /// Softer pastel used by the slide-out card and the editor chrome.
     static func card(_ color: NoteColor) -> Color {
         Color(nsColor: nsColor(color).blended(withFraction: 0.68, of: .white) ?? .white)

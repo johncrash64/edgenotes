@@ -5,33 +5,44 @@ import SwiftUI
 let edgeShape = UnevenRoundedRectangle(topLeadingRadius: 12, bottomLeadingRadius: 12)
 
 enum Layout {
-    /// Collapsed panel: a transparent strip so the hover target at the screen
-    /// edge is easy to hit. Only the dashes inside it are drawn.
-    static let stripWidth: CGFloat = 14
-    static let stripHeight: CGFloat = 160
+    /// Collapsed panel: a small transparent strip that follows the cursor along
+    /// the edge. Only the capsule of dashes inside it is drawn.
+    static let stripWidth: CGFloat = 12
+    static let stripHeight: CGFloat = 120
+    /// How close to the screen edge the strip starts following the cursor.
+    static let followDistance: CGFloat = 160
     static let maxDashes = 8
     /// Deck panel: wide enough for the tab column plus a slid-out card and its shadow.
     static let deckWidth: CGFloat = 300
-    static let editorWidth: CGFloat = 440
 }
 
-/// Resting state: a thin strip of vertical color dashes, one per note.
+/// Resting state: a slim, dark, translucent capsule holding one small pastel
+/// dash per note. Almost invisible until you reach for the edge.
 struct DashStrip: View {
     let store: NoteStore
+
+    private let shape = UnevenRoundedRectangle(topLeadingRadius: 4.5, bottomLeadingRadius: 4.5)
 
     var body: some View {
         VStack(spacing: 4) {
             if store.notes.isEmpty {
-                Capsule().fill(.secondary.opacity(0.5)).frame(width: 4, height: 10)
+                Capsule().fill(.white.opacity(0.35)).frame(width: 3.5, height: 8.5)
             }
             ForEach(store.notes.prefix(Layout.maxDashes)) { note in
-                Capsule().fill(Palette.color(note.color)).frame(width: 4, height: 10)
+                Capsule().fill(Palette.dash(note.color)).frame(width: 3.5, height: 8.5)
             }
         }
-        .padding(.vertical, 6)
-        .padding(.horizontal, 3)
-        .background(.regularMaterial, in: edgeShape)
-        .overlay(edgeShape.strokeBorder(.primary.opacity(0.12)))
+        .padding(.vertical, 5)
+        .padding(.leading, 2.5)
+        .padding(.trailing, 1.5)
+        .background {
+            ZStack {
+                shape.fill(.ultraThinMaterial)
+                shape.fill(Color.black.opacity(0.22))
+            }
+            .environment(\.colorScheme, .dark)
+        }
+        .overlay(shape.strokeBorder(.white.opacity(0.08)))
     }
 }
 

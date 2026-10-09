@@ -27,7 +27,7 @@ struct RichTextEditor: NSViewRepresentable {
     let onChange: (Data) -> Void
 
     func makeCoordinator() -> Coordinator {
-        Coordinator(onChange: onChange)
+        Coordinator(onChange: onChange, controller: controller)
     }
 
     func makeNSView(context: Context) -> NSScrollView {
@@ -66,6 +66,7 @@ struct RichTextEditor: NSViewRepresentable {
         textView.setSelectedRange(NSRange(location: textView.string.utf16.count, length: 0))
 
         controller.textView = textView
+        controller.refreshState()
         DispatchQueue.main.async { textView.window?.makeFirstResponder(textView) }
         return scroll
     }
@@ -78,15 +79,22 @@ struct RichTextEditor: NSViewRepresentable {
     @MainActor
     final class Coordinator: NSObject, NSTextViewDelegate {
         var onChange: (Data) -> Void
+        private let controller: RichTextController
 
-        init(onChange: @escaping (Data) -> Void) {
+        init(onChange: @escaping (Data) -> Void, controller: RichTextController) {
             self.onChange = onChange
+            self.controller = controller
         }
 
         func textDidChange(_ notification: Notification) {
             guard let textView = notification.object as? NSTextView,
                   let storage = textView.textStorage else { return }
             onChange(RichText.rtf(from: storage))
+        }
+
+        /// Keeps the toolbar (bold, size, color...) in sync with the caret.
+        func textViewDidChangeSelection(_ notification: Notification) {
+            controller.refreshState()
         }
     }
 }

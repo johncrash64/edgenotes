@@ -8,7 +8,6 @@ final class PanelModel {
     enum Mode: Equatable {
         case collapsed
         case deck
-        case editor(UUID)
     }
 
     private(set) var mode: Mode = .collapsed
