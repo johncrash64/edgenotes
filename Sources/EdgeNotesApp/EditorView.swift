@@ -30,13 +30,14 @@ struct EditorView: View {
                 )
                 .id(noteID)
             }
-            .background(.regularMaterial, in: edgeShape)
-            .overlay(edgeShape.strokeBorder(.primary.opacity(0.12)))
+            .foregroundStyle(Color.black.opacity(0.8))
+            .background(Palette.card(note.color))
+            .clipShape(edgeShape)
+            .overlay(edgeShape.strokeBorder(.black.opacity(0.12)))
+            .shadow(color: .black.opacity(0.28), radius: 8, x: -2, y: 2)
+            // Pastel paper is light in both appearances, like the cards.
+            .environment(\.colorScheme, .light)
         }
-    }
-
-    private var edgeShape: UnevenRoundedRectangle {
-        UnevenRoundedRectangle(topLeadingRadius: 12, bottomLeadingRadius: 12)
     }
 
     // MARK: - Header

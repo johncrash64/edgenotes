@@ -12,6 +12,21 @@ enum Palette {
         Color(nsColor: nsColor(color))
     }
 
+    /// Saturated pastel used by the edge tabs.
+    static func tab(_ color: NoteColor) -> Color {
+        Color(nsColor: nsColor(color).blended(withFraction: 0.35, of: .white) ?? .white)
+    }
+
+    /// Softer pastel used by the slide-out card and the editor chrome.
+    static func card(_ color: NoteColor) -> Color {
+        Color(nsColor: nsColor(color).blended(withFraction: 0.68, of: .white) ?? .white)
+    }
+
+    /// Dark tint of the note color for labels printed on its own pastel.
+    static func ink(_ color: NoteColor) -> Color {
+        Color(nsColor: nsColor(color).blended(withFraction: 0.62, of: .black) ?? .black)
+    }
+
     /// Light "paper" tinted by the note color. The editor is always light so the
     /// stored text colors are the ones the destination app will receive.
     static func paper(for color: NoteColor) -> NSColor {

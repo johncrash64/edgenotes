@@ -2,31 +2,52 @@ import EdgeNotesCore
 import SwiftUI
 
 /// Panel corner shape: rounded on the screen side only, flush with the edge.
-private let edgeShape = UnevenRoundedRectangle(topLeadingRadius: 12, bottomLeadingRadius: 12)
+let edgeShape = UnevenRoundedRectangle(topLeadingRadius: 12, bottomLeadingRadius: 12)
 
+enum Layout {
+    /// Collapsed panel: a transparent strip so the hover target at the screen
+    /// edge is easy to hit. Only the dashes inside it are drawn.
+    static let stripWidth: CGFloat = 14
+    static let stripHeight: CGFloat = 160
+    static let maxDashes = 8
+    /// Deck panel: wide enough for the tab column plus a slid-out card and its shadow.
+    static let deckWidth: CGFloat = 300
+    static let editorWidth: CGFloat = 440
+}
+
+/// Resting state: a thin strip of vertical color dashes, one per note.
+struct DashStrip: View {
+    let store: NoteStore
+
+    var body: some View {
+        VStack(spacing: 4) {
+            if store.notes.isEmpty {
+                Capsule().fill(.secondary.opacity(0.5)).frame(width: 4, height: 10)
+            }
+            ForEach(store.notes.prefix(Layout.maxDashes)) { note in
+                Capsule().fill(Palette.color(note.color)).frame(width: 4, height: 10)
+            }
+        }
+        .padding(.vertical, 6)
+        .padding(.horizontal, 3)
+        .background(.regularMaterial, in: edgeShape)
+        .overlay(edgeShape.strokeBorder(.primary.opacity(0.12)))
+    }
+}
+
+/// Collapsed panel content.
 struct PillView: View {
     let store: NoteStore
 
     var body: some View {
-        VStack(spacing: Layout.dashSpacing) {
-            if store.notes.isEmpty {
-                Capsule().fill(.secondary.opacity(0.5)).frame(width: 8, height: Layout.dashHeight)
-            }
-            ForEach(store.notes.prefix(Layout.maxPillDashes)) { note in
-                Capsule().fill(Palette.color(note.color)).frame(width: 8, height: Layout.dashHeight)
-            }
-        }
-        .frame(width: Layout.pillWidth, height: Layout.pillHeight(dashes: store.notes.count))
-        .background(.regularMaterial, in: edgeShape)
-        .overlay(edgeShape.strokeBorder(.primary.opacity(0.12)))
-        // The panel is a taller, transparent strip so the hover target at the
-        // screen edge is easy to hit; only the pill itself is drawn.
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .trailing)
+        DashStrip(store: store)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .trailing)
     }
 }
 
 struct DeckView: View {
     let store: NoteStore
+    let model: PanelModel
     let onEdit: (UUID) -> Void
     let onNew: () -> Void
 
@@ -35,61 +56,133 @@ struct DeckView: View {
     @State private var undoTask: Task<Void, Never>?
 
     var body: some View {
-        VStack(spacing: 0) {
-            if store.notes.isEmpty {
-                Text("No notes yet")
-                    .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else {
-                List {
-                    ForEach(store.notes) { note in
-                        NoteRow(
-                            note: note,
-                            isCopied: copiedID == note.id,
-                            onCopy: { copy(note) },
-                            onEdit: { onEdit(note.id) },
-                            onDuplicate: { store.duplicate(id: note.id) },
-                            onDelete: { delete(note) }
-                        )
-                        .listRowInsets(EdgeInsets(top: 2, leading: 8, bottom: 2, trailing: 8))
-                        .listRowSeparator(.hidden)
-                        .listRowBackground(Color.clear)
-                    }
-                    .onMove { store.move(from: $0, to: $1) }
+        GeometryReader { proxy in
+            let geometry = DeckGeometry(panelSize: proxy.size, count: store.notes.count)
+            let shown = geometry.visibleCount
+
+            ZStack(alignment: .topLeading) {
+                DashStrip(store: store)
+                    .frame(width: proxy.size.width, height: proxy.size.height, alignment: .trailing)
+                    .opacity(model.revealed ? 0 : 1)
+                    .animation(.easeOut(duration: 0.18), value: model.revealed)
+                    .allowsHitTesting(false)
+
+                plusButton(geometry: geometry, shown: shown)
+
+                ForEach(Array(store.notes.prefix(shown).enumerated()), id: \.element.id) { index, note in
+                    tab(note, index: index, shown: shown, rect: geometry.tabRect(index), step: geometry.step)
                 }
-                .listStyle(.plain)
-                .scrollContentBackground(.hidden)
+
+                undoBadge(geometry: geometry)
+
+                if let id = model.hoveredID,
+                   let index = store.notes.prefix(shown).firstIndex(where: { $0.id == id }) {
+                    card(store.notes[index], rect: geometry.cardRect(for: index))
+                }
             }
-            Divider()
-            footer
+            .frame(width: proxy.size.width, height: proxy.size.height, alignment: .topLeading)
+            // One spring drives the card sliding out of / back into its tab.
+            .animation(.spring(response: 0.34, dampingFraction: 0.82), value: model.hoveredID)
         }
-        .background(.regularMaterial, in: edgeShape)
-        .overlay(edgeShape.strokeBorder(.primary.opacity(0.12)))
+    }
+
+    // MARK: - Pieces
+
+    /// Tabs cascade in top to bottom when opening, and fold back bottom to top.
+    private func tabAnimation(index: Int, shown: Int) -> Animation {
+        model.revealed
+            ? .easeOut(duration: 0.26).delay(0.05 + min(Double(index) * 0.03, 0.3))
+            : .easeIn(duration: 0.2).delay(min(Double(shown - 1 - index) * 0.02, 0.2))
+    }
+
+    private func tab(_ note: Note, index: Int, shown: Int, rect: CGRect, step: CGFloat) -> some View {
+        // Later tabs are drawn on top, so only `step` points of each tab show,
+        // except the last one which shows in full. The label must fit in that.
+        let visible = index == shown - 1 ? rect.height : min(step, rect.height)
+        return TabLabel(note: note, visibleHeight: visible)
+            .frame(width: rect.width, height: rect.height)
+            .position(x: rect.midX, y: rect.midY)
+            .offset(x: model.revealed ? 0 : DeckGeometry.tabWidth + 10)
+            // The hovered tab is replaced by its card.
+            .opacity(model.revealed && model.hoveredID != note.id ? 1 : 0)
+            .animation(tabAnimation(index: index, shown: shown), value: model.revealed)
+            .animation(.easeOut(duration: 0.12), value: model.hoveredID)
+            .allowsHitTesting(model.revealed)
+            .onTapGesture { copy(note) }
+            .contextMenu { menu(for: note) }
+    }
+
+    private func plusButton(geometry: DeckGeometry, shown: Int) -> some View {
+        let rect = geometry.plusRect
+        return Image(systemName: "plus")
+            .font(.system(size: 11, weight: .semibold))
+            .foregroundStyle(.secondary)
+            .frame(width: rect.width, height: rect.height)
+            .background(.regularMaterial, in: Circle())
+            .overlay(Circle().strokeBorder(.primary.opacity(0.12)))
+            .position(x: rect.midX, y: rect.midY)
+            // Appears first when opening, disappears last when closing.
+            .opacity(model.revealed ? 1 : 0)
+            .animation(
+                model.revealed
+                    ? .easeOut(duration: 0.18)
+                    : .easeIn(duration: 0.18).delay(min(Double(shown) * 0.02, 0.2)),
+                value: model.revealed
+            )
+            .allowsHitTesting(model.revealed)
+            .onTapGesture(perform: onNew)
+    }
+
+    private func card(_ note: Note, rect: CGRect) -> some View {
+        NoteCard(
+            note: note,
+            isCopied: copiedID == note.id,
+            onCopy: { copy(note) },
+            onEdit: { onEdit(note.id) }
+        )
+        .frame(width: rect.width, height: rect.height)
+        .position(x: rect.midX, y: rect.midY)
+        .contextMenu { menu(for: note) }
+        .id(note.id)
+        .zIndex(2)
+        .transition(.move(edge: .trailing).combined(with: .opacity))
     }
 
     @ViewBuilder
-    private var footer: some View {
-        HStack {
-            if let undoNote {
-                Text("Deleted “\(undoNote.title)”")
-                    .lineLimit(1)
-                    .font(.callout)
-                Spacer()
+    private func undoBadge(geometry: DeckGeometry) -> some View {
+        if let undoNote {
+            let rect = geometry.plusRect
+            HStack(spacing: 8) {
+                Text("Deleted").font(.caption).foregroundStyle(.secondary)
                 Button("Undo") {
                     store.restore(undoNote)
                     self.undoNote = nil
                 }
-            } else {
-                Button(action: onNew) {
-                    Label("New note", systemImage: "plus")
-                }
                 .buttonStyle(.borderless)
-                Spacer()
+                .font(.caption.weight(.semibold))
             }
+            .padding(.horizontal, 10)
+            .frame(height: rect.height)
+            .background(.regularMaterial, in: Capsule())
+            .overlay(Capsule().strokeBorder(.primary.opacity(0.12)))
+            .position(x: rect.minX - 62, y: rect.midY)
+            .transition(.opacity)
         }
-        .padding(.horizontal, 14)
-        .frame(height: Layout.footerHeight)
     }
+
+    @ViewBuilder
+    private func menu(for note: Note) -> some View {
+        Button("Copy") { copy(note) }
+        Button("Edit") { onEdit(note.id) }
+        Button("Duplicate") { store.duplicate(id: note.id) }
+        Divider()
+        Button("Move Up") { move(note, by: -1) }
+        Button("Move Down") { move(note, by: 1) }
+        Divider()
+        Button("Delete", role: .destructive) { delete(note) }
+    }
+
+    // MARK: - Actions
 
     private func copy(_ note: Note) {
         NoteClipboard.copy(note)
@@ -100,7 +193,16 @@ struct DeckView: View {
         }
     }
 
+    private func move(_ note: Note, by offset: Int) {
+        guard let index = store.notes.firstIndex(where: { $0.id == note.id }) else { return }
+        let target = index + offset
+        guard store.notes.indices.contains(target) else { return }
+        // `move(to:)` takes an insertion point, so moving down needs +1.
+        store.move(from: IndexSet(integer: index), to: offset > 0 ? target + 1 : target)
+    }
+
     private func delete(_ note: Note) {
+        model.hover(nil)
         store.delete(id: note.id)
         undoNote = note
         undoTask?.cancel()
@@ -112,71 +214,88 @@ struct DeckView: View {
     }
 }
 
-private struct NoteRow: View {
+/// The colored tab with its title printed sideways, like a file-folder tab.
+private struct TabLabel: View {
     let note: Note
-    let isCopied: Bool
-    let onCopy: () -> Void
-    let onEdit: () -> Void
-    let onDuplicate: () -> Void
-    let onDelete: () -> Void
+    /// Height of the part of the tab that is not covered by the next one.
+    let visibleHeight: CGFloat
 
-    @State private var hovering = false
+    /// Rough width of one uppercase character at the label font, tracking included.
+    private static let charWidth: CGFloat = 6.4
+
+    private var label: String {
+        let fitting = Int((visibleHeight - 4) / Self.charWidth)
+        return String(note.title.uppercased().prefix(max(1, min(fitting, 8))))
+    }
 
     var body: some View {
-        HStack(spacing: 10) {
-            Capsule()
-                .fill(Palette.color(note.color))
-                .frame(width: 4, height: 22)
-            Text(note.title.isEmpty ? "Untitled" : note.title)
+        ZStack(alignment: .top) {
+            UnevenRoundedRectangle(topLeadingRadius: 9, bottomLeadingRadius: 9)
+                .fill(Palette.tab(note.color))
+                .shadow(color: .black.opacity(0.18), radius: 3, x: -1, y: 1)
+            Text(label)
+                .font(.system(size: 8.5, weight: .bold))
+                .tracking(0.5)
+                .foregroundStyle(Palette.ink(note.color))
                 .lineLimit(1)
-            Spacer(minLength: 4)
-            if isCopied {
-                Label("Copied", systemImage: "checkmark")
-                    .font(.caption)
-                    .foregroundStyle(.green)
-            } else {
-                Button(action: onEdit) {
-                    Image(systemName: "pencil")
-                }
-                .buttonStyle(.borderless)
-                .foregroundStyle(.secondary)
-                .help("Edit")
-            }
-        }
-        .padding(.horizontal, 8)
-        .frame(height: Layout.rowHeight - 4)
-        .background(
-            RoundedRectangle(cornerRadius: 8)
-                .fill(hovering ? Palette.color(note.color).opacity(0.18) : .clear)
-        )
-        .contentShape(Rectangle())
-        .onTapGesture(perform: onCopy)
-        .onHover { hovering = $0 }
-        .contextMenu {
-            Button("Copy", action: onCopy)
-            Button("Edit", action: onEdit)
-            Button("Duplicate", action: onDuplicate)
-            Divider()
-            Button("Delete", role: .destructive, action: onDelete)
+                .fixedSize()
+                .rotationEffect(.degrees(-90))
+                // Center the sideways text inside the visible band, not the whole tab.
+                .frame(width: DeckGeometry.tabWidth, height: visibleHeight)
         }
     }
 }
 
-enum Layout {
-    static let pillWidth: CGFloat = 14
-    static let maxPillDashes = 8
-    static let dashHeight: CGFloat = 3
-    static let dashSpacing: CGFloat = 6
-    /// Height of the transparent hover strip the collapsed panel occupies.
-    static let hoverStripHeight: CGFloat = 160
+/// The note, slid out of its tab: sideways label, title and a rich-text preview.
+private struct NoteCard: View {
+    let note: Note
+    let isCopied: Bool
+    let onCopy: () -> Void
+    let onEdit: () -> Void
 
-    /// Visible pill height for a given note count (at least one dash).
-    static func pillHeight(dashes count: Int) -> CGFloat {
-        let dashes = CGFloat(max(1, min(count, maxPillDashes)))
-        return 16 + dashes * (dashHeight + dashSpacing)
+    private let shape = UnevenRoundedRectangle(topLeadingRadius: 10, bottomLeadingRadius: 10)
+
+    var body: some View {
+        HStack(spacing: 0) {
+            Text(String(note.title.uppercased().prefix(10)))
+                .font(.system(size: 9, weight: .bold))
+                .tracking(0.8)
+                .foregroundStyle(Palette.ink(note.color))
+                .lineLimit(1)
+                .fixedSize()
+                .rotationEffect(.degrees(-90))
+                .frame(width: 26)
+                .frame(maxHeight: .infinity)
+                .background(Palette.tab(note.color))
+
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 6) {
+                    Text(note.title.isEmpty ? "Untitled" : note.title)
+                        .font(.system(size: 12, weight: .semibold))
+                        .lineLimit(1)
+                    Spacer(minLength: 4)
+                    if isCopied {
+                        Label("Copied", systemImage: "checkmark")
+                            .font(.caption.weight(.medium))
+                            .foregroundStyle(Color(red: 0.1, green: 0.5, blue: 0.25))
+                    } else {
+                        Button(action: onEdit) { Image(systemName: "pencil") }
+                            .buttonStyle(.borderless)
+                            .help("Edit")
+                    }
+                }
+                RichTextPreview(rtf: note.body)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .clipped()
+            }
+            .foregroundStyle(Color.black.opacity(0.8))
+            .padding(.horizontal, 10)
+            .padding(.vertical, 8)
+        }
+        .background(Palette.card(note.color))
+        .clipShape(shape)
+        .shadow(color: .black.opacity(0.28), radius: 8, x: -2, y: 2)
+        .contentShape(shape)
+        .onTapGesture(perform: onCopy)
     }
-    static let deckWidth: CGFloat = 264
-    static let editorWidth: CGFloat = 440
-    static let rowHeight: CGFloat = 40
-    static let footerHeight: CGFloat = 44
 }

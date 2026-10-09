@@ -19,31 +19,45 @@ final class EdgePanel: NSPanel {
         level = .statusBar
         backgroundColor = .clear
         isOpaque = false
-        hasShadow = true
+        // Cards and tabs draw their own shadows; a window shadow would lag the animation.
+        hasShadow = false
         isMovable = false
         hidesOnDeactivate = false
+        acceptsMouseMovedEvents = true
         collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle]
     }
 }
 
-/// Hosting view that reports mouse enter/exit even while the app is inactive.
+/// Hosting view that reports the mouse even while the app is inactive.
+/// Points are delivered in top-left coordinates, matching `DeckGeometry`.
 final class TrackingHostingView<Content: View>: NSHostingView<Content> {
     var onMouseEntered: (() -> Void)?
     var onMouseExited: (() -> Void)?
+    var onMouseMoved: ((CGPoint) -> Void)?
 
     override func updateTrackingAreas() {
         super.updateTrackingAreas()
         for area in trackingAreas where area.owner === self { removeTrackingArea(area) }
         addTrackingArea(NSTrackingArea(
             rect: .zero,
-            options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect],
+            options: [.mouseEnteredAndExited, .mouseMoved, .activeAlways, .inVisibleRect],
             owner: self
         ))
     }
 
-    override func mouseEntered(with event: NSEvent) { onMouseEntered?() }
+    override func mouseEntered(with event: NSEvent) {
+        onMouseEntered?()
+        onMouseMoved?(topLeftPoint(for: event))
+    }
+
     override func mouseExited(with event: NSEvent) { onMouseExited?() }
+    override func mouseMoved(with event: NSEvent) { onMouseMoved?(topLeftPoint(for: event)) }
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+
+    private func topLeftPoint(for event: NSEvent) -> CGPoint {
+        let point = convert(event.locationInWindow, from: nil)
+        return CGPoint(x: point.x, y: isFlipped ? point.y : bounds.height - point.y)
+    }
 }
 
 private struct RootView: View {
@@ -52,16 +66,23 @@ private struct RootView: View {
     let onNew: () -> Void
 
     var body: some View {
-        Group {
+        ZStack(alignment: .trailing) {
             switch model.mode {
             case .collapsed:
                 PillView(store: store)
             case .deck:
-                DeckView(store: store, onEdit: { model.go(.editor($0)) }, onNew: onNew)
+                DeckView(
+                    store: store,
+                    model: model,
+                    onEdit: { model.go(.editor($0)) },
+                    onNew: onNew
+                )
             case .editor(let id):
                 EditorView(noteID: id, store: store, onBack: { model.go(.deck) })
+                    .transition(.move(edge: .trailing).combined(with: .opacity))
             }
         }
+        .animation(.easeOut(duration: 0.25), value: model.mode)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .trailing)
     }
 }
@@ -71,7 +92,10 @@ final class EdgePanelController {
     let model = PanelModel()
     private let store: NoteStore
     private let panel = EdgePanel()
+    /// Pending "mouse left, fold the deck" timer.
     private var collapseTask: Task<Void, Never>?
+    /// Runs while the fold-back animation plays, then shrinks the panel.
+    private var closeTask: Task<Void, Never>?
     private var resignObserver: NSObjectProtocol?
     private var isEditing = false
 
@@ -85,6 +109,7 @@ final class EdgePanelController {
         ))
         host.onMouseEntered = { [weak self] in self?.mouseEntered() }
         host.onMouseExited = { [weak self] in self?.mouseExited() }
+        host.onMouseMoved = { [weak self] in self?.mouseMoved($0) }
         panel.contentView = host
 
         model.onModeChange = { [weak self] mode in self?.apply(mode) }
@@ -94,8 +119,6 @@ final class EdgePanelController {
         ) { [weak self] _ in
             MainActor.assumeIsolated { self?.panelResignedKey() }
         }
-
-        observeNoteCount()
     }
 
     func show() {
@@ -106,6 +129,7 @@ final class EdgePanelController {
     /// Opens the deck even when the mouse is elsewhere (status item), then
     /// closes it again if the mouse never comes over it.
     func openDeck() {
+        cancelPendingClose()
         model.go(.deck)
         scheduleCollapse(after: .seconds(3))
     }
@@ -118,21 +142,72 @@ final class EdgePanelController {
     // MARK: - Mouse and focus
 
     private func mouseEntered() {
-        collapseTask?.cancel()
-        if model.mode == .collapsed { model.go(.deck) }
+        switch model.mode {
+        case .collapsed:
+            model.go(.deck)
+        case .deck:
+            cancelPendingClose()
+        case .editor:
+            break
+        }
     }
 
     private func mouseExited() {
+        guard model.mode == .deck else { return }
+        model.hover(nil)
         scheduleCollapse(after: .milliseconds(350))
+    }
+
+    private func mouseMoved(_ point: CGPoint) {
+        guard model.mode == .deck, let size = panel.contentView?.bounds.size else { return }
+        let geometry = DeckGeometry(panelSize: size, count: store.notes.count)
+        let hoveredIndex = model.hoveredID.flatMap { id in store.notes.firstIndex { $0.id == id } }
+
+        switch geometry.hitTest(point, hovered: hoveredIndex) {
+        case .tab(let index), .card(let index):
+            cancelPendingClose()
+            if store.notes.indices.contains(index) { model.hover(store.notes[index].id) }
+        case .plus, .column:
+            cancelPendingClose()
+            model.hover(nil)
+        case .outside:
+            model.hover(nil)
+            // Do not restart the timer on every mouse-move, or it would never fire.
+            if collapseTask == nil { scheduleCollapse(after: .milliseconds(350)) }
+        }
     }
 
     private func scheduleCollapse(after delay: Duration) {
         collapseTask?.cancel()
         collapseTask = Task { [weak self] in
             try? await Task.sleep(for: delay)
+            guard !Task.isCancelled, let self else { return }
+            self.collapseTask = nil
+            self.beginClose()
+        }
+    }
+
+    /// Plays the fold-back animation, then shrinks the panel to the hover strip.
+    private func beginClose() {
+        guard model.mode == .deck else { return }
+        model.hover(nil)
+        model.revealed = false
+        closeTask?.cancel()
+        closeTask = Task { [weak self] in
+            try? await Task.sleep(for: .milliseconds(480))
             guard !Task.isCancelled, let self, self.model.mode == .deck else { return }
+            self.closeTask = nil
             self.model.go(.collapsed)
         }
+    }
+
+    /// The mouse came back: stop any pending or running close and re-open if it had started.
+    private func cancelPendingClose() {
+        collapseTask?.cancel()
+        collapseTask = nil
+        closeTask?.cancel()
+        closeTask = nil
+        if model.mode == .deck, !model.revealed { model.revealed = true }
     }
 
     private func panelResignedKey() {
@@ -153,6 +228,7 @@ final class EdgePanelController {
         isEditing = { if case .editor = mode { true } else { false } }()
 
         if isEditing {
+            model.hover(nil)
             // Typing needs a real key window. Hovering and copying never activate
             // the app (so your paste target keeps focus); editing does, like any window.
             panel.makeKeyAndOrderFront(nil)
@@ -163,24 +239,21 @@ final class EdgePanelController {
             // Hand focus back to the app the user was working in.
             NSApp.deactivate()
         }
-        setFrame(frame(for: mode), animated: true)
-    }
 
-    private func refreshFrame() {
-        setFrame(frame(for: model.mode), animated: false)
-    }
+        // The frame changes at once; SwiftUI animates what is drawn inside it.
+        panel.setFrame(frame(for: mode), display: true)
 
-    private func setFrame(_ frame: NSRect, animated: Bool) {
-        if animated {
-            NSAnimationContext.runAnimationGroup { context in
-                context.duration = 0.16
-                panel.animator().setFrame(frame, display: true)
-            } completionHandler: { [panel] in
-                MainActor.assumeIsolated { panel.invalidateShadow() }
+        switch mode {
+        case .deck:
+            // Start hidden, then flip on the next tick so the tabs animate in.
+            model.revealed = false
+            Task { [weak self] in
+                try? await Task.sleep(for: .milliseconds(30))
+                guard let self, self.model.mode == .deck, self.closeTask == nil else { return }
+                self.model.revealed = true
             }
-        } else {
-            panel.setFrame(frame, display: true)
-            panel.invalidateShadow()
+        case .collapsed, .editor:
+            model.revealed = false
         }
     }
 
@@ -188,18 +261,13 @@ final class EdgePanelController {
         guard let screen = NSScreen.screens.first else { return .zero }
         let visible = screen.visibleFrame
         let maxHeight = visible.height - 40
-        let count = store.notes.count
 
         let size: NSSize
         switch mode {
         case .collapsed:
-            size = NSSize(width: Layout.pillWidth, height: Layout.hoverStripHeight)
+            size = NSSize(width: Layout.stripWidth, height: Layout.stripHeight)
         case .deck:
-            let rows = CGFloat(max(count, 2))
-            size = NSSize(
-                width: Layout.deckWidth,
-                height: min(maxHeight, rows * Layout.rowHeight + Layout.footerHeight + 12)
-            )
+            size = NSSize(width: Layout.deckWidth, height: maxHeight)
         case .editor:
             size = NSSize(width: Layout.editorWidth, height: min(maxHeight, 560))
         }
@@ -209,17 +277,5 @@ final class EdgePanelController {
             width: size.width,
             height: size.height
         )
-    }
-
-    /// The pill and the deck are sized from the note count, so re-fit when it changes.
-    private func observeNoteCount() {
-        withObservationTracking {
-            _ = store.notes.count
-        } onChange: { [weak self] in
-            Task { @MainActor in
-                self?.refreshFrame()
-                self?.observeNoteCount()
-            }
-        }
     }
 }
