@@ -27,6 +27,18 @@ public struct DeckGeometry: Equatable, Sendable {
         case outside
     }
 
+    /// Height the deck panel needs for `count` notes, capped to `maxHeight`.
+    /// At least tall enough for a slid-out card, so the first and last tab can show one.
+    public static func panelHeight(count: Int, maxHeight: CGFloat) -> CGFloat {
+        let reserved = 2 * edgeMargin + plusGap + plusSize + tabHeight
+        let fitting = Int(((maxHeight - reserved) / minStep).rounded(.down)) + 1
+        let shown = max(0, min(count, fitting))
+        let group = shown == 0
+            ? plusSize
+            : CGFloat(shown - 1) * maxStep + tabHeight + plusGap + plusSize
+        return min(maxHeight, max(group, cardHeight) + 2 * edgeMargin)
+    }
+
     public let panelSize: CGSize
     public let count: Int
 

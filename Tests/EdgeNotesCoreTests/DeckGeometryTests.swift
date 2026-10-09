@@ -89,4 +89,19 @@ import Testing
         let g = DeckGeometry(panelSize: panel, count: 2)
         #expect(g.hitTest(CGPoint(x: 100, y: 100), hovered: 7) == .outside)
     }
+
+    @Test func panelHeightFitsStackWithoutTighteningAndFitsACard() {
+        let one = DeckGeometry.panelHeight(count: 1, maxHeight: 800)
+        #expect(one >= DeckGeometry.cardHeight + 2 * DeckGeometry.edgeMargin)
+
+        let five = DeckGeometry.panelHeight(count: 5, maxHeight: 800)
+        let g = DeckGeometry(panelSize: CGSize(width: 300, height: five), count: 5)
+        #expect(g.step == DeckGeometry.maxStep, "a roomy panel does not tighten the tabs")
+        #expect(g.visibleCount == 5)
+        #expect(five > one)
+    }
+
+    @Test func panelHeightIsCapped() {
+        #expect(DeckGeometry.panelHeight(count: 500, maxHeight: 700) == 700)
+    }
 }

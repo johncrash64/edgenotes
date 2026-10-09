@@ -3,7 +3,40 @@ import AppKit
 /// Bridges SwiftUI toolbar buttons to the NSTextView selection.
 @MainActor
 public final class RichTextController {
+    /// What the toolbar should show for the current selection or caret.
+    public struct FormatState: Equatable {
+        public var bold = false
+        public var italic = false
+        public var underline = false
+        public var size: CGFloat = 14
+        public var family = "System"
+        /// `nil` means "automatic": no color attribute, the destination decides.
+        public var color: NSColor?
+
+        public init() {}
+    }
+
+    public private(set) var state = FormatState()
+    public var onStateChange: ((FormatState) -> Void)?
+
     public init() {}
+
+    /// Re-reads the selection. Call when the selection moves or text changes.
+    public func refreshState() {
+        guard let textView else { return }
+        let font = (attribute(.font, in: textView) as? NSFont) ?? Self.defaultFont
+        let traits = NSFontManager.shared.traits(of: font)
+        var next = FormatState()
+        next.bold = traits.contains(.boldFontMask)
+        next.italic = traits.contains(.italicFontMask)
+        next.underline = ((attribute(.underlineStyle, in: textView) as? Int) ?? 0) != 0
+        next.size = font.pointSize
+        next.family = font.familyName.flatMap { $0.hasPrefix(".") ? nil : $0 } ?? "System"
+        next.color = attribute(.foregroundColor, in: textView) as? NSColor
+        guard next != state else { return }
+        state = next
+        onStateChange?(next)
+    }
 
     public weak var textView: NSTextView?
 
@@ -67,6 +100,7 @@ public final class RichTextController {
     }
 
     private func modifyFonts(_ transform: (NSFont) -> NSFont) {
+        defer { refreshState() }
         guard let textView, let storage = textView.textStorage else { return }
         let range = textView.selectedRange()
 
@@ -93,6 +127,7 @@ public final class RichTextController {
     }
 
     private func setAttribute(_ key: NSAttributedString.Key, value: Any?, in textView: NSTextView, range: NSRange) {
+        defer { refreshState() }
         guard let storage = textView.textStorage else { return }
 
         if range.length == 0 {

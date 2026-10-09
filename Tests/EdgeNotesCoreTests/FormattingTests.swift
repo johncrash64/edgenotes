@@ -111,4 +111,24 @@ import Testing
         let red = restored.attribute(.foregroundColor, at: 0, effectiveRange: nil) as? NSColor
         #expect(red?.usingColorSpace(.sRGB)?.redComponent ?? 0 > 0.9)
     }
+
+    @Test func stateReflectsSelectionAndNotifies() {
+        let (textView, controller) = makeEditor()
+        var seen: [RichTextController.FormatState] = []
+        controller.onStateChange = { seen.append($0) }
+
+        textView.setSelectedRange(NSRange(location: 0, length: 5))
+        controller.toggleBold()
+        controller.setColor(.red)
+        #expect(controller.state.bold)
+        #expect(controller.state.color == .red)
+        #expect(!seen.isEmpty)
+
+        textView.setSelectedRange(NSRange(location: 6, length: 5))
+        controller.refreshState()
+        #expect(!controller.state.bold, "a different selection reports its own formatting")
+        #expect(controller.state.color == nil)
+        #expect(controller.state.family == "System")
+        #expect(controller.state.size == 14)
+    }
 }
