@@ -16,7 +16,7 @@ Dash, tab and card are one surface per note, not three: position, size, corners 
 - **Click a tab or card**: copies it. The clipboard gets RTF (native Mac apps), HTML (web apps) and plain text (everything else), so the destination picks the richest format it understands. Copying never steals focus from the app you are pasting into.
 - **Pencil on the card** (or right-click → Edit, or "+"): opens the editor.
 - **Right-click** a tab or card to copy, edit, duplicate, move up/down, or delete (deletes can be undone for 10 seconds).
-- The menu bar icon offers *Show Notes*, *New Note* and *Quit*.
+- The menu bar icon offers *Show Notes*, *New Note*, *Launch at Login* (a toggle that registers the app as a login item; it also shows up in System Settings → Login Items) and *Quit*.
 
 The open/close motion is modeled on [Hold My Notes](https://holdmynotes.app/)' demo video.
 

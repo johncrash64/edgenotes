@@ -1,12 +1,16 @@
 import AppKit
 import EdgeNotesCore
+import ServiceManagement
+import os
 
 @MainActor
-final class AppDelegate: NSObject, NSApplicationDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var store: NoteStore?
     private var controller: EdgePanelController?
     private var editor: EditorController?
     private var statusItem: NSStatusItem?
+    private var loginItem: NSMenuItem?
+    private let logger = Logger(subsystem: "com.johncrash64.edgenotes", category: "app")
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
@@ -60,9 +64,47 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(withTitle: "Show Notes", action: #selector(showNotes), keyEquivalent: "").target = self
         menu.addItem(withTitle: "New Note", action: #selector(newNote), keyEquivalent: "").target = self
         menu.addItem(.separator())
+        let login = menu.addItem(withTitle: "Launch at Login", action: #selector(toggleLaunchAtLogin), keyEquivalent: "")
+        login.target = self
+        loginItem = login
+        menu.delegate = self
+        menu.addItem(.separator())
         menu.addItem(withTitle: "Quit EdgeNotes", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         item.menu = menu
         statusItem = item
+    }
+
+    /// Reflects the real login-item state every time the menu opens, since the
+    /// user can also change it in System Settings.
+    func menuNeedsUpdate(_ menu: NSMenu) {
+        switch SMAppService.mainApp.status {
+        case .enabled:
+            loginItem?.state = .on
+            loginItem?.title = "Launch at Login"
+        case .requiresApproval:
+            loginItem?.state = .mixed
+            loginItem?.title = "Launch at Login (approve in Settings…)"
+        default:
+            loginItem?.state = .off
+            loginItem?.title = "Launch at Login"
+        }
+    }
+
+    @objc private func toggleLaunchAtLogin() {
+        let service = SMAppService.mainApp
+        do {
+            switch service.status {
+            case .enabled:
+                try service.unregister()
+            case .requiresApproval:
+                SMAppService.openSystemSettingsLoginItems()
+            default:
+                try service.register()
+            }
+        } catch {
+            logger.error("Could not change login item: \(error.localizedDescription, privacy: .public)")
+            SMAppService.openSystemSettingsLoginItems()
+        }
     }
 
     @objc private func showNotes() { controller?.openDeck() }
