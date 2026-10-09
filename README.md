@@ -8,17 +8,25 @@ Inspired by [Hold My Notes](https://holdmynotes.app/). EdgeNotes is smaller on p
 
 ## How it works
 
-- **At rest** the app is a thin strip of colored dashes on the right edge, one per note.
-- **Touch the edge**: a "+" button and one colored tab per note slide in, top to bottom. Move away and they fold back into the dashes.
-- **Hover a tab**: the note slides out of it as a pastel card showing its title and a rich-text preview. Move to another tab and the card follows.
+- **At rest** the app is a slim, dark, translucent capsule on the right edge with one small pastel dash per note. As your cursor approaches the edge, the capsule glides to your cursor's height.
+- **Touch the edge**: a "+" button and one colored tab per note slide in, top to bottom, showing only their titles.
+- **Rest on a tab**: after a moment the note slides out of it as a pastel card with a rich-text preview. Once a card is out, it follows the cursor from tab to tab. Move away and everything folds back into the capsule.
 - **Click a tab or card**: copies it. The clipboard gets RTF (native Mac apps), HTML (web apps) and plain text (everything else), so the destination picks the richest format it understands. Copying never steals focus from the app you are pasting into.
-- **Pencil on the card** (or right-click → Edit): opens the editor with a title, an accent color, and a formatting bar (font, size, bold, italic, underline, text color). Shortcuts: ⌘B, ⌘I, ⌘U, plus the usual ⌘Z / ⌘X / ⌘C / ⌘V / ⌘A.
-- **Right-click** a tab or card to duplicate, move up/down, or delete (deletes can be undone for 10 seconds).
+- **Pencil on the card** (or right-click → Edit, or "+"): opens the editor.
+- **Right-click** a tab or card to copy, edit, duplicate, move up/down, or delete (deletes can be undone for 10 seconds).
 - The menu bar icon offers *Show Notes*, *New Note* and *Quit*.
 
 The open/close motion is modeled on [Hold My Notes](https://holdmynotes.app/)' demo video.
 
-The editor is always a light "paper" sheet, so a color you pick means the same thing wherever you paste. "Automatic" text color leaves the color unset, so the destination app uses its own default (this is what keeps pasted text readable in dark mode).
+### The editor
+
+A pastel sheet in its own window, centered on the screen:
+
+- Title, a live *Saving… / Saved* indicator, and a pin that keeps the window open when you click elsewhere.
+- Formatting bar: font, size, bold, italic, underline and text color. The buttons light up to match the selection or caret. Shortcuts: ⌘B, ⌘I, ⌘U, plus ⌘Z / ⌘X / ⌘C / ⌘V / ⌘A, and ⌘W to close.
+- Footer: note color, a two-step *Delete*, and *Copy*, which copies the note with its formatting.
+
+The writing surface is always a light "paper" sheet, so a color you pick means the same thing wherever you paste. "Automatic" text color leaves the color unset, so the destination app uses its own default (this is what keeps pasted text readable in dark mode).
 
 ## Requirements
 
