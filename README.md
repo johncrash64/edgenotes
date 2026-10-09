@@ -9,8 +9,10 @@ Inspired by [Hold My Notes](https://holdmynotes.app/). EdgeNotes is smaller on p
 ## How it works
 
 - **At rest** the app is a slim, dark, translucent capsule on the right edge with one small pastel dash per note. As your cursor approaches the edge, the capsule glides to your cursor's height.
-- **Touch the edge**: a "+" button and one colored tab per note slide in, top to bottom, showing only their titles.
-- **Rest on a tab**: after a moment the note slides out of it as a pastel card with a rich-text preview. Once a card is out, it follows the cursor from tab to tab. Move away and everything folds back into the capsule.
+- **Touch the edge**: each dash grows into its own colored tab, top to bottom, showing the note's title. A "+" button appears under them.
+- **Rest on a tab**: after a moment that same tab grows into a pastel card with a rich-text preview. Once a card is out, it follows the cursor from tab to tab. Move away and everything shrinks back into the capsule.
+
+Dash, tab and card are one surface per note, not three: position, size, corners and color interpolate, and the contents are revealed inside the same shape.
 - **Click a tab or card**: copies it. The clipboard gets RTF (native Mac apps), HTML (web apps) and plain text (everything else), so the destination picks the richest format it understands. Copying never steals focus from the app you are pasting into.
 - **Pencil on the card** (or right-click → Edit, or "+"): opens the editor.
 - **Right-click** a tab or card to copy, edit, duplicate, move up/down, or delete (deletes can be undone for 10 seconds).
