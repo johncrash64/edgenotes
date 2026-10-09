@@ -292,7 +292,7 @@ final class EdgePanelController {
         model.revealed = false
         closeTask?.cancel()
         closeTask = Task { [weak self] in
-            try? await Task.sleep(for: .milliseconds(480))
+            try? await Task.sleep(for: .milliseconds(620))
             guard !Task.isCancelled, let self, self.model.mode == .deck else { return }
             self.closeTask = nil
             self.model.go(.collapsed)
