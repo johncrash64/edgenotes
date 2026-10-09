@@ -8,11 +8,15 @@ Inspired by [Hold My Notes](https://holdmynotes.app/). EdgeNotes is smaller on p
 
 ## How it works
 
-- **Hover** the right screen edge: the deck opens. Move away and it folds back into the pill.
-- **Click a note**: copies it. The clipboard gets RTF (native Mac apps), HTML (web apps) and plain text (everything else), so the destination picks the richest format it understands. Copying never steals focus from the app you are pasting into.
-- **Pencil / right-click → Edit**: opens the editor with a title, an accent color, and a formatting bar (font, size, bold, italic, underline, text color). Shortcuts: ⌘B, ⌘I, ⌘U, plus the usual ⌘Z / ⌘X / ⌘C / ⌘V / ⌘A.
-- **Drag** rows to reorder, **right-click** to duplicate or delete (deletes can be undone for 10 seconds).
+- **At rest** the app is a thin strip of colored dashes on the right edge, one per note.
+- **Touch the edge**: a "+" button and one colored tab per note slide in, top to bottom. Move away and they fold back into the dashes.
+- **Hover a tab**: the note slides out of it as a pastel card showing its title and a rich-text preview. Move to another tab and the card follows.
+- **Click a tab or card**: copies it. The clipboard gets RTF (native Mac apps), HTML (web apps) and plain text (everything else), so the destination picks the richest format it understands. Copying never steals focus from the app you are pasting into.
+- **Pencil on the card** (or right-click → Edit): opens the editor with a title, an accent color, and a formatting bar (font, size, bold, italic, underline, text color). Shortcuts: ⌘B, ⌘I, ⌘U, plus the usual ⌘Z / ⌘X / ⌘C / ⌘V / ⌘A.
+- **Right-click** a tab or card to duplicate, move up/down, or delete (deletes can be undone for 10 seconds).
 - The menu bar icon offers *Show Notes*, *New Note* and *Quit*.
+
+The open/close motion is modeled on [Hold My Notes](https://holdmynotes.app/)' demo video.
 
 The editor is always a light "paper" sheet, so a color you pick means the same thing wherever you paste. "Automatic" text color leaves the color unset, so the destination app uses its own default (this is what keeps pasted text readable in dark mode).
 
@@ -58,6 +62,7 @@ scripts/package.sh      builds and signs build/EdgeNotes.app
 ## Known limitations (v0.1)
 
 - Appears on the primary display only.
+- Tabs are tightened to fit the screen height; beyond roughly 40 notes the extra ones are not shown.
 - No sync, no search, no archive, no global shortcut.
 - No app icon yet.
 
