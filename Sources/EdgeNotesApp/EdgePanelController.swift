@@ -71,7 +71,7 @@ private struct RootView: View {
         ZStack(alignment: .trailing) {
             switch model.mode {
             case .collapsed:
-                PillView(store: store)
+                PillView(store: store, model: model)
             case .deck:
                 DeckView(store: store, model: model, onEdit: onEdit, onNew: onNew, onCopied: onCopied)
             }
@@ -193,6 +193,7 @@ final class EdgePanelController {
         case .collapsed:
             openIntentTask?.cancel()
             openIntentTask = nil
+            model.hot = false
             // Trust where the cursor really is, not the event: resizing the panel can
             // deliver an exit while the cursor has not moved.
             if !stripFrame().contains(NSEvent.mouseLocation) { awaitingExit = false }
@@ -217,8 +218,9 @@ final class EdgePanelController {
 
     private func beginOpenIntent() {
         guard openIntentTask == nil, !awaitingExit else { return }
+        model.hot = true
         openIntentTask = Task { [weak self] in
-            try? await Task.sleep(for: .milliseconds(280))
+            try? await Task.sleep(for: .milliseconds(150))
             guard !Task.isCancelled, let self else { return }
             self.openIntentTask = nil
             guard self.model.mode == .collapsed, !self.awaitingExit else { return }
@@ -264,7 +266,7 @@ final class EdgePanelController {
         dwellTask?.cancel()
         dwellIndex = index
         let sinceOpen = Date().timeIntervalSince(openedAt)
-        let delay = max(0.4, 0.7 - sinceOpen)
+        let delay = max(0.35, 0.55 - sinceOpen)
         dwellTask = Task { [weak self] in
             try? await Task.sleep(for: .seconds(delay))
             guard !Task.isCancelled, let self, self.dwellIndex == index, self.model.mode == .deck else { return }
@@ -323,18 +325,20 @@ final class EdgePanelController {
     private func apply(_ mode: PanelModel.Mode) {
         switch mode {
         case .deck:
+            model.hot = false
             openedAt = Date()
             // The frame changes at once; SwiftUI animates what is drawn inside it.
             panel.setFrame(deckFrame(), display: true)
             // Start hidden, then flip on the next tick so the tabs animate in.
             model.revealed = false
             Task { [weak self] in
-                try? await Task.sleep(for: .milliseconds(30))
+                try? await Task.sleep(for: .milliseconds(16))
                 guard let self, self.model.mode == .deck, self.closeTask == nil else { return }
                 self.model.revealed = true
             }
         case .collapsed:
             model.revealed = false
+            model.hot = false
             let strip = stripFrame()
             // Dismissed on purpose with the cursor still over the dots: wait for it to leave.
             awaitingExit = isDismissing && strip.contains(NSEvent.mouseLocation)

@@ -15,6 +15,10 @@ final class PanelModel {
     /// Drives the open/close animation inside the deck: tabs slide in when true.
     var revealed = false
 
+    /// The cursor is on the dots but has not committed yet: the capsule lights up
+    /// at once so the shelf feels responsive while the intent pause filters accidents.
+    var hot = false
+
     /// Note whose card is currently slid out of its tab.
     private(set) var hoveredID: UUID?
 

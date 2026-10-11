@@ -20,8 +20,8 @@ final class EditorModel {
 /// The note editor: a pastel sheet in its own centered window.
 struct EditorView: View {
     static let cardSize = CGSize(width: 440, height: 500)
-    /// Transparent room around the card for its shadow.
-    static let margin: CGFloat = 28
+    /// The window is exactly the card: no shadow, so nothing for the window edge to clip.
+    static let margin: CGFloat = 0
 
     let store: NoteStore
     let model: EditorModel
@@ -87,8 +87,6 @@ struct EditorView: View {
                 endPoint: .bottom
             ))
         )
-        .shadow(color: .black.opacity(0.30), radius: 26, y: 12)
-        .shadow(color: .black.opacity(0.14), radius: 2, y: 1)
         // Pop in: a little smaller and blurred, springing to full size.
         .scaleEffect(model.appeared ? 1 : 0.93)
         .opacity(model.appeared ? 1 : 0)

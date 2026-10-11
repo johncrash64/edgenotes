@@ -52,21 +52,27 @@ enum DashLayout {
 
 /// The slim, dark, translucent capsule dashes rest in.
 private struct StripBackdrop: View {
+    /// Lit while the cursor is on the dots, before the shelf has committed to opening.
+    var hot = false
+
     private let shape = UnevenRoundedRectangle(topLeadingRadius: 4.5, bottomLeadingRadius: 4.5)
 
     var body: some View {
         ZStack {
             shape.fill(.ultraThinMaterial)
             shape.fill(Color.black.opacity(0.22))
+            shape.fill(Color.white.opacity(hot ? 0.16 : 0))
         }
         .environment(\.colorScheme, .dark)
-        .overlay(shape.strokeBorder(.white.opacity(0.08)))
+        .overlay(shape.strokeBorder(.white.opacity(hot ? 0.35 : 0.08)))
+        .animation(.easeOut(duration: 0.08), value: hot)
     }
 }
 
 /// Collapsed panel content: the capsule and one pastel dash per note.
 struct PillView: View {
     let store: NoteStore
+    let model: PanelModel
 
     var body: some View {
         GeometryReader { proxy in
@@ -74,7 +80,7 @@ struct PillView: View {
             let container = DashLayout.containerRect(count: count, in: proxy.size)
             let first = DashLayout.dashRect(index: 0, count: count, in: proxy.size)
             ZStack(alignment: .topLeading) {
-                StripBackdrop()
+                StripBackdrop(hot: model.hot)
                     .frame(width: container.width, height: container.height)
                     .offset(x: container.minX, y: container.minY)
                 if count == 0 {
@@ -167,7 +173,7 @@ struct DeckView: View {
     /// Dashes grow into tabs top to bottom when opening, and fold back bottom to top.
     private func openAnimation(index: Int, shown: Int) -> Animation {
         model.revealed
-            ? .spring(response: 0.42, dampingFraction: 0.8).delay(min(Double(index) * 0.03, 0.25))
+            ? .spring(response: 0.34, dampingFraction: 0.82).delay(min(Double(index) * 0.02, 0.14))
             : .spring(response: 0.34, dampingFraction: 0.92).delay(min(Double(shown - 1 - index) * 0.02, 0.2))
     }
 

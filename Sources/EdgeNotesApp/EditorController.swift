@@ -46,6 +46,8 @@ final class EditorController {
     private var model: EditorModel?
     private var resignObserver: NSObjectProtocol?
     private var isClosing = false
+    /// The app you were working in when the editor opened, so closing returns you to it.
+    private var previousApp: NSRunningApplication?
 
     init(store: NoteStore) {
         self.store = store
@@ -58,6 +60,12 @@ final class EditorController {
             return
         }
         teardown()
+
+        // Remember where you came from, unless that is us (e.g. replacing one editor with another).
+        let front = NSWorkspace.shared.frontmostApplication
+        if front?.processIdentifier != ProcessInfo.processInfo.processIdentifier {
+            previousApp = front
+        }
 
         let model = EditorModel(noteID: noteID)
         let controller = RichTextController()
@@ -104,7 +112,9 @@ final class EditorController {
         DispatchQueue.main.async { model.appeared = true }
     }
 
-    func close() {
+    /// - Parameter restoreFocus: give the focus back to the app you came from. Not
+    ///   wanted when the editor closes because you clicked another app: you already chose.
+    func close(restoreFocus: Bool = true) {
         guard let panel, let model, !isClosing else { return }
         isClosing = true
         store.flush()
@@ -113,8 +123,8 @@ final class EditorController {
             try? await Task.sleep(for: .milliseconds(220))
             guard let self, self.panel === panel else { return }
             self.teardown()
-            // Hand focus back to the app the user was working in.
-            NSApp.deactivate()
+            if restoreFocus { self.returnFocus() }
+            self.previousApp = nil
         }
     }
 
@@ -125,6 +135,17 @@ final class EditorController {
         // `activate()` alone is cooperative on macOS 14+ and does not take focus
         // from another app; the user just asked for this window, so force it.
         NSApp.activate(ignoringOtherApps: true)
+    }
+
+    /// `NSApp.deactivate()` alone leaves us frontmost on macOS 14, so name the app to
+    /// hand activation to.
+    private func returnFocus() {
+        if let app = previousApp, !app.isTerminated {
+            NSApp.yieldActivation(to: app)
+            app.activate()
+        } else {
+            NSApp.deactivate()
+        }
     }
 
     private func deleteNote() {
@@ -139,7 +160,7 @@ final class EditorController {
         Task { [weak self] in
             try? await Task.sleep(for: .milliseconds(150))
             guard let self, self.panel === panel, !panel.isKeyWindow, !model.pinned else { return }
-            self.close()
+            self.close(restoreFocus: false)
         }
     }
 
