@@ -6,7 +6,7 @@ enum Layout {
     /// the edge. Only the capsule of dashes inside it is drawn.
     static let stripWidth: CGFloat = 12
     /// Extra hover room above and below the capsule.
-    static let stripSlop: CGFloat = 18
+    static let stripSlop: CGFloat = 12
     static let maxDashes = 8
     /// Deck panel: wide enough for the tab column plus a slid-out card and its shadow.
     static let deckWidth: CGFloat = 300
@@ -315,10 +315,26 @@ private struct NoteSurface: View {
         ZStack(alignment: .topLeading) {
             shape.fill(fill)
 
+            // Light from the top left, a touch of shade bottom right: paper with some body.
+            shape
+                .fill(LinearGradient(
+                    colors: [.white.opacity(0.30), .white.opacity(0), .black.opacity(0.07)],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                ))
+                .opacity(phase == .card ? 1 : (phase == .tab ? 0.7 : 0))
+
             // The label strip of the card is the tab's own color.
             Rectangle()
                 .fill(Palette.tab(note.color))
                 .frame(width: Self.stripWidth)
+                .opacity(phase == .card ? 1 : 0)
+
+            // A crease where the strip meets the page.
+            Rectangle()
+                .fill(Color.black.opacity(0.10))
+                .frame(width: 1)
+                .offset(x: Self.stripWidth - 1)
                 .opacity(phase == .card ? 1 : 0)
 
             Text(label)
@@ -349,12 +365,27 @@ private struct NoteSurface: View {
         }
         .frame(width: rect.width, height: rect.height, alignment: .topLeading)
         .clipShape(shape)
-        .shadow(
-            color: .black.opacity(phase == .card ? 0.28 : (phase == .tab ? 0.18 : 0)),
-            radius: phase == .card ? 8 : 3,
-            x: phase == .card ? -2 : -1,
-            y: phase == .card ? 2 : 1
+        // Bright rim on the lit edges, faint dark rim on the others.
+        .overlay(
+            shape
+                .strokeBorder(
+                    LinearGradient(
+                        colors: [.white.opacity(0.75), .white.opacity(0), .black.opacity(0.10)],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    ),
+                    lineWidth: 1
+                )
+                .opacity(phase == .dash ? 0 : 1)
         )
+        // Two shadows: a wide soft one for lift, a tight one for contact.
+        .shadow(
+            color: .black.opacity(phase == .card ? 0.30 : (phase == .tab ? 0.18 : 0)),
+            radius: phase == .card ? 16 : 3,
+            x: phase == .card ? -5 : -1,
+            y: phase == .card ? 8 : 1
+        )
+        .shadow(color: .black.opacity(phase == .card ? 0.22 : 0), radius: 2, x: -1, y: 1)
         .contentShape(shape)
         .onTapGesture(perform: onCopy)
         .offset(x: rect.minX, y: rect.minY)
@@ -364,7 +395,7 @@ private struct NoteSurface: View {
     /// Title, pencil and rich-text preview. Laid out at the card's full size and
     /// clipped by the surface, so it is uncovered as the card grows.
     private var cardBody: some View {
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 6) {
                 Text(note.title.isEmpty ? "Untitled" : note.title)
                     .font(.system(size: 12, weight: .semibold))
@@ -387,13 +418,25 @@ private struct NoteSurface: View {
                     .help("Edit")
                 }
             }
+            .padding(.horizontal, 10)
+            .padding(.top, 8)
+            .padding(.bottom, 2)
+
+            // Edge to edge: it scrolls with the wheel or trackpad, only if you want to see more.
             RichTextPreview(rtf: note.body)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .clipped()
+                .overlay(alignment: .bottom) {
+                    LinearGradient(
+                        colors: [Palette.card(note.color).opacity(0), Palette.card(note.color)],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                    .frame(height: 14)
+                    .allowsHitTesting(false)
+                }
         }
         .foregroundStyle(Color.black.opacity(0.8))
-        .padding(.horizontal, 10)
-        .padding(.vertical, 8)
         .frame(
             width: DeckGeometry.cardWidth - Self.stripWidth,
             height: DeckGeometry.cardHeight,

@@ -9,8 +9,8 @@ Inspired by [Hold My Notes](https://holdmynotes.app/). EdgeNotes is smaller on p
 ## How it works
 
 - **At rest** the app is a slim, dark, translucent capsule on the right edge with one small pastel dash per note. It never moves: it stays at the vertical middle of the edge and ignores your cursor unless you touch it.
-- **Touch the dots** (slam the cursor against the edge at their height): each dash grows into its own colored tab, top to bottom, showing the note's title. A "+" button appears under them. Brushing the edge anywhere else does nothing, and a brief pause of intent keeps a fast pass from opening it.
-- **Rest on a tab**: after a moment that same tab grows into a pastel card with a rich-text preview. Once a card is out, it follows the cursor from tab to tab. Move away and everything shrinks back into the capsule.
+- **Touch the dots** (slam the cursor against the edge at their height): each dash grows into its own colored tab, top to bottom, showing the note's title. A "+" button appears under them. Brushing the edge anywhere else does nothing, and a short pause of intent (about a quarter of a second) keeps a fast pass from opening it.
+- **Rest on a tab**: after a moment that same tab grows into a pastel card with a rich-text preview. The preview runs edge to edge and scrolls with the wheel or trackpad, only when you want to see more; a fade at the bottom hints there is more below. Once a card is out, it follows the cursor from tab to tab. Move away and everything shrinks back into the capsule.
 
 Dash, tab and card are one surface per note, not three: position, size, corners and color interpolate, and the contents are revealed inside the same shape.
 

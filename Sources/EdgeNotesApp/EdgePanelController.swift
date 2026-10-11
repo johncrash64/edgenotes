@@ -218,7 +218,7 @@ final class EdgePanelController {
     private func beginOpenIntent() {
         guard openIntentTask == nil, !awaitingExit else { return }
         openIntentTask = Task { [weak self] in
-            try? await Task.sleep(for: .milliseconds(120))
+            try? await Task.sleep(for: .milliseconds(280))
             guard !Task.isCancelled, let self else { return }
             self.openIntentTask = nil
             guard self.model.mode == .collapsed, !self.awaitingExit else { return }
@@ -264,7 +264,7 @@ final class EdgePanelController {
         dwellTask?.cancel()
         dwellIndex = index
         let sinceOpen = Date().timeIntervalSince(openedAt)
-        let delay = max(0.28, 0.55 - sinceOpen)
+        let delay = max(0.4, 0.7 - sinceOpen)
         dwellTask = Task { [weak self] in
             try? await Task.sleep(for: .seconds(delay))
             guard !Task.isCancelled, let self, self.dwellIndex == index, self.model.mode == .deck else { return }

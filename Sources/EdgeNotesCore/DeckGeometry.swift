@@ -12,8 +12,8 @@ public struct DeckGeometry: Equatable, Sendable {
     public static let minStep: CGFloat = 16
     public static let plusSize: CGFloat = 26
     public static let plusGap: CGFloat = 12
-    public static let cardWidth: CGFloat = 252
-    public static let cardHeight: CGFloat = 150
+    public static let cardWidth: CGFloat = 268
+    public static let cardHeight: CGFloat = 172
     public static let edgeMargin: CGFloat = 8
     /// Extra hover room to the left of the tab column.
     public static let hoverSlop: CGFloat = 6
