@@ -5,9 +5,8 @@ enum Layout {
     /// Collapsed panel: a small transparent strip that follows the cursor along
     /// the edge. Only the capsule of dashes inside it is drawn.
     static let stripWidth: CGFloat = 12
-    static let stripHeight: CGFloat = 120
-    /// How close to the screen edge the strip starts following the cursor.
-    static let followDistance: CGFloat = 160
+    /// Extra hover room above and below the capsule.
+    static let stripSlop: CGFloat = 18
     static let maxDashes = 8
     /// Deck panel: wide enough for the tab column plus a slid-out card and its shadow.
     static let deckWidth: CGFloat = 300
@@ -26,11 +25,15 @@ enum DashLayout {
 
     private static func shown(_ count: Int) -> Int { max(1, min(count, Layout.maxDashes)) }
 
+    static func containerHeight(count: Int) -> CGFloat {
+        let n = CGFloat(shown(count))
+        return n * dashHeight + (n - 1) * spacing + 2 * paddingVertical
+    }
+
     /// The dark capsule behind the dashes, flush right and vertically centered.
     static func containerRect(count: Int, in size: CGSize) -> CGRect {
-        let n = CGFloat(shown(count))
         let width = paddingLeading + dashWidth + paddingTrailing
-        let height = n * dashHeight + (n - 1) * spacing + 2 * paddingVertical
+        let height = containerHeight(count: count)
         return CGRect(x: size.width - width, y: (size.height - height) / 2, width: width, height: height)
     }
 
@@ -103,6 +106,8 @@ struct DeckView: View {
     let model: PanelModel
     let onEdit: (UUID) -> Void
     let onNew: () -> Void
+    /// A note was copied: the shelf folds itself away after a beat.
+    let onCopied: () -> Void
 
     @State private var copiedID: UUID?
     @State private var undoNote: Note?
@@ -227,6 +232,7 @@ struct DeckView: View {
     private func copy(_ note: Note) {
         NoteClipboard.copy(note)
         copiedID = note.id
+        onCopied()
         Task {
             try? await Task.sleep(for: .seconds(1.2))
             if copiedID == note.id { copiedID = nil }
@@ -327,7 +333,14 @@ private struct NoteSurface: View {
                     x: phase == .card ? Self.stripWidth / 2 : DeckGeometry.tabWidth / 2,
                     y: phase == .card ? cardRect.height / 2 : tabVisibleHeight / 2
                 )
-                .opacity(phase == .dash ? 0 : 1)
+                .opacity(phase == .dash || (phase == .tab && isCopied) ? 0 : 1)
+
+            // Confirmation on the tab itself, for when you click before the card opens.
+            Image(systemName: "checkmark")
+                .font(.system(size: 12, weight: .bold))
+                .foregroundStyle(Palette.ink(note.color))
+                .position(x: DeckGeometry.tabWidth / 2, y: tabVisibleHeight / 2)
+                .opacity(phase == .tab && isCopied ? 1 : 0)
 
             if phase == .card {
                 cardBody
@@ -362,9 +375,16 @@ private struct NoteSurface: View {
                         .font(.caption.weight(.medium))
                         .foregroundStyle(Color(red: 0.1, green: 0.5, blue: 0.25))
                 } else {
-                    Button(action: onEdit) { Image(systemName: "pencil") }
-                        .buttonStyle(.borderless)
-                        .help("Edit")
+                    // A real target, not a 12pt glyph: editing is deliberate, so it must be easy to hit.
+                    Button(action: onEdit) {
+                        Image(systemName: "pencil")
+                            .font(.system(size: 11, weight: .semibold))
+                            .frame(width: 26, height: 26)
+                            .background(Circle().fill(Color.black.opacity(0.07)))
+                            .contentShape(Circle())
+                    }
+                    .buttonStyle(.plain)
+                    .help("Edit")
                 }
             }
             RichTextPreview(rtf: note.body)

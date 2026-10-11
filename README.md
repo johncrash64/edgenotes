@@ -8,13 +8,14 @@ Inspired by [Hold My Notes](https://holdmynotes.app/). EdgeNotes is smaller on p
 
 ## How it works
 
-- **At rest** the app is a slim, dark, translucent capsule on the right edge with one small pastel dash per note. As your cursor approaches the edge, the capsule glides to your cursor's height.
-- **Touch the edge**: each dash grows into its own colored tab, top to bottom, showing the note's title. A "+" button appears under them.
+- **At rest** the app is a slim, dark, translucent capsule on the right edge with one small pastel dash per note. It never moves: it stays at the vertical middle of the edge and ignores your cursor unless you touch it.
+- **Touch the dots** (slam the cursor against the edge at their height): each dash grows into its own colored tab, top to bottom, showing the note's title. A "+" button appears under them. Brushing the edge anywhere else does nothing, and a brief pause of intent keeps a fast pass from opening it.
 - **Rest on a tab**: after a moment that same tab grows into a pastel card with a rich-text preview. Once a card is out, it follows the cursor from tab to tab. Move away and everything shrinks back into the capsule.
 
 Dash, tab and card are one surface per note, not three: position, size, corners and color interpolate, and the contents are revealed inside the same shape.
-- **Click a tab or card**: copies it. The clipboard gets RTF (native Mac apps), HTML (web apps) and plain text (everything else), so the destination picks the richest format it understands. Copying never steals focus from the app you are pasting into.
-- **Pencil on the card** (or right-click → Edit, or "+"): opens the editor.
+
+- **Click a tab or card**: that is "use this note". It is copied, a check confirms it, and the shelf folds itself away. The clipboard gets RTF (native Mac apps), HTML (web apps) and plain text (everything else), so the destination picks the richest format it understands. Copying never steals focus from the app you are pasting into, and the shelf does not reopen until your cursor has left the dots once.
+- **Pencil on the card** (or right-click → Edit, or "+"): opens the editor. Editing is always explicit, so a click never edits by accident.
 - **Right-click** a tab or card to copy, edit, duplicate, move up/down, or delete (deletes can be undone for 10 seconds).
 - The menu bar icon offers *Show Notes*, *New Note*, *Launch at Login* (a toggle that registers the app as a login item; it also shows up in System Settings → Login Items) and *Quit*.
 

@@ -65,6 +65,7 @@ private struct RootView: View {
     let store: NoteStore
     let onEdit: (UUID) -> Void
     let onNew: () -> Void
+    let onCopied: () -> Void
 
     var body: some View {
         ZStack(alignment: .trailing) {
@@ -72,13 +73,15 @@ private struct RootView: View {
             case .collapsed:
                 PillView(store: store)
             case .deck:
-                DeckView(store: store, model: model, onEdit: onEdit, onNew: onNew)
+                DeckView(store: store, model: model, onEdit: onEdit, onNew: onNew, onCopied: onCopied)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .trailing)
     }
 }
 
+/// The edge shelf. It only reacts to what you touch: the dots, then a tab, then
+/// its card. It never moves on its own.
 @MainActor
 final class EdgePanelController {
     /// Called when the user asks to edit a note (pencil, context menu, "+").
@@ -88,6 +91,9 @@ final class EdgePanelController {
     private let store: NoteStore
     private let panel = EdgePanel()
 
+    /// Short pause before touching the dots opens the deck, so brushing past the
+    /// edge on the way elsewhere does nothing.
+    private var openIntentTask: Task<Void, Never>?
     /// Pending "mouse left, fold the deck" timer.
     private var collapseTask: Task<Void, Never>?
     /// Runs while the fold-back animation plays, then shrinks the panel.
@@ -97,13 +103,14 @@ final class EdgePanelController {
     private var dwellIndex: Int?
     private var openedAt = Date.distantPast
 
-    /// Vertical center of the strip (and, once open, of the deck), in screen
-    /// coordinates (bottom-left origin).
-    private var stripY: CGFloat = 0
-    private var followTarget: CGFloat = 0
-    private var followTimer: Timer?
-    private var globalMonitor: Any?
-    private var localMonitor: Any?
+    /// True from the moment the deck is dismissed on purpose (copied, editing)
+    /// until it has folded away, so stray mouse movement cannot reopen it midway.
+    private var isDismissing = false
+    private var dismissTask: Task<Void, Never>?
+    /// After a deliberate dismissal the cursor may still be sitting on the dots.
+    /// Until it leaves that zone once, touching them again is not a request to open,
+    /// so a click never turns into a reopen.
+    private var awaitingExit = false
 
     init(store: NoteStore) {
         self.store = store
@@ -112,7 +119,8 @@ final class EdgePanelController {
             model: model,
             store: store,
             onEdit: { [weak self] in self?.edit($0) },
-            onNew: { [weak self] in self?.newNote() }
+            onNew: { [weak self] in self?.newNote() },
+            onCopied: { [weak self] in self?.copied() }
         ))
         host.onMouseEntered = { [weak self] in self?.mouseEntered() }
         host.onMouseExited = { [weak self] in self?.mouseExited() }
@@ -120,10 +128,6 @@ final class EdgePanelController {
         panel.contentView = host
 
         model.onModeChange = { [weak self] mode in self?.apply(mode) }
-
-        stripY = restY
-        followTarget = restY
-        installCursorMonitors()
         observeNoteCount()
     }
 
@@ -136,7 +140,6 @@ final class EdgePanelController {
     /// closes it again if the mouse never comes over it.
     func openDeck() {
         cancelPendingClose()
-        stripY = restY
         model.go(.deck)
         scheduleCollapse(after: .seconds(3))
     }
@@ -146,60 +149,31 @@ final class EdgePanelController {
         edit(note.id)
     }
 
+    // MARK: - Deliberate dismissal
+
     private func edit(_ id: UUID) {
-        beginClose()
+        dismissDeck(after: .zero)
         onEditNote?(id)
     }
 
-    // MARK: - Strip follows the cursor
-
-    private var screen: NSScreen? { NSScreen.screens.first }
-
-    private var restY: CGFloat { screen?.visibleFrame.midY ?? 0 }
-
-    /// A global monitor sees the cursor over any app without needing any permission.
-    private func installCursorMonitors() {
-        globalMonitor = NSEvent.addGlobalMonitorForEvents(matching: .mouseMoved) { [weak self] _ in
-            MainActor.assumeIsolated { self?.cursorMoved() }
-        }
-        localMonitor = NSEvent.addLocalMonitorForEvents(matching: .mouseMoved) { [weak self] event in
-            MainActor.assumeIsolated { self?.cursorMoved() }
-            return event
-        }
+    /// A click on a note means "use it": show the check for a beat, then get out of the way.
+    private func copied() {
+        dismissDeck(after: .milliseconds(750))
     }
 
-    /// Near the right edge the strip glides to the cursor's height; away from it, back to the middle.
-    private func cursorMoved() {
-        guard model.mode == .collapsed, let screen else { return }
-        let location = NSEvent.mouseLocation
-        let nearEdge = screen.frame.contains(location)
-            && location.x >= screen.frame.maxX - Layout.followDistance
-        followTarget = nearEdge ? location.y : restY
-        startFollowing()
-    }
-
-    private func startFollowing() {
-        guard followTimer == nil else { return }
-        followTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / 60.0, repeats: true) { [weak self] _ in
-            MainActor.assumeIsolated { self?.followTick() }
+    private func dismissDeck(after delay: Duration) {
+        isDismissing = true
+        // No card should pop open while the shelf is on its way out.
+        cancelDwell()
+        collapseTask?.cancel()
+        collapseTask = nil
+        dismissTask?.cancel()
+        dismissTask = Task { [weak self] in
+            try? await Task.sleep(for: delay)
+            guard !Task.isCancelled, let self else { return }
+            self.dismissTask = nil
+            self.beginClose()
         }
-    }
-
-    private func followTick() {
-        guard model.mode == .collapsed else { stopFollowing(); return }
-        let delta = followTarget - stripY
-        if abs(delta) < 0.5 {
-            stripY = followTarget
-            stopFollowing()
-        } else {
-            stripY += delta * 0.22
-        }
-        panel.setFrame(stripFrame(), display: true)
-    }
-
-    private func stopFollowing() {
-        followTimer?.invalidate()
-        followTimer = nil
     }
 
     // MARK: - Mouse over the panel
@@ -207,22 +181,53 @@ final class EdgePanelController {
     private func mouseEntered() {
         switch model.mode {
         case .collapsed:
-            stopFollowing()
-            model.go(.deck)
+            beginOpenIntent()
         case .deck:
+            guard !isDismissing else { return }
             cancelPendingClose()
         }
     }
 
     private func mouseExited() {
-        guard model.mode == .deck else { return }
-        cancelDwell()
-        model.hover(nil)
-        scheduleCollapse(after: .milliseconds(350))
+        switch model.mode {
+        case .collapsed:
+            openIntentTask?.cancel()
+            openIntentTask = nil
+            // Trust where the cursor really is, not the event: resizing the panel can
+            // deliver an exit while the cursor has not moved.
+            if !stripFrame().contains(NSEvent.mouseLocation) { awaitingExit = false }
+        case .deck:
+            guard !isDismissing else { return }
+            cancelDwell()
+            model.hover(nil)
+            scheduleCollapse(after: .milliseconds(350))
+        }
     }
 
     private func mouseMoved(_ point: CGPoint) {
-        guard model.mode == .deck, let size = panel.contentView?.bounds.size else { return }
+        switch model.mode {
+        case .collapsed:
+            // Moving within the zone around the dots counts as touching them.
+            if openIntentTask == nil { beginOpenIntent() }
+        case .deck:
+            guard !isDismissing else { return }
+            deckMouseMoved(point)
+        }
+    }
+
+    private func beginOpenIntent() {
+        guard openIntentTask == nil, !awaitingExit else { return }
+        openIntentTask = Task { [weak self] in
+            try? await Task.sleep(for: .milliseconds(120))
+            guard !Task.isCancelled, let self else { return }
+            self.openIntentTask = nil
+            guard self.model.mode == .collapsed, !self.awaitingExit else { return }
+            self.model.go(.deck)
+        }
+    }
+
+    private func deckMouseMoved(_ point: CGPoint) {
+        guard let size = panel.contentView?.bounds.size else { return }
         let geometry = DeckGeometry(panelSize: size, count: store.notes.count)
         let hoveredIndex = model.hoveredID.flatMap { id in store.notes.firstIndex { $0.id == id } }
 
@@ -259,7 +264,7 @@ final class EdgePanelController {
         dwellTask?.cancel()
         dwellIndex = index
         let sinceOpen = Date().timeIntervalSince(openedAt)
-        let delay = max(0.32, 0.6 - sinceOpen)
+        let delay = max(0.28, 0.55 - sinceOpen)
         dwellTask = Task { [weak self] in
             try? await Task.sleep(for: .seconds(delay))
             guard !Task.isCancelled, let self, self.dwellIndex == index, self.model.mode == .deck else { return }
@@ -310,6 +315,11 @@ final class EdgePanelController {
 
     // MARK: - Geometry
 
+    private var screen: NSScreen? { NSScreen.screens.first }
+
+    /// The dots live at a fixed spot: the vertical middle of the right edge.
+    private var restY: CGFloat { screen?.visibleFrame.midY ?? 0 }
+
     private func apply(_ mode: PanelModel.Mode) {
         switch mode {
         case .deck:
@@ -325,8 +335,11 @@ final class EdgePanelController {
             }
         case .collapsed:
             model.revealed = false
-            panel.setFrame(stripFrame(), display: true)
-            cursorMoved()
+            let strip = stripFrame()
+            // Dismissed on purpose with the cursor still over the dots: wait for it to leave.
+            awaitingExit = isDismissing && strip.contains(NSEvent.mouseLocation)
+            isDismissing = false
+            panel.setFrame(strip, display: true)
         }
     }
 
@@ -334,10 +347,11 @@ final class EdgePanelController {
         min(max(y, visible.minY + height / 2), visible.maxY - height / 2)
     }
 
+    /// Just taller than the capsule, so the target is forgiving without being greedy.
     private func stripFrame() -> NSRect {
         guard let screen else { return .zero }
-        let height = Layout.stripHeight
-        let center = clampedCenter(stripY, height: height, in: screen.visibleFrame)
+        let height = DashLayout.containerHeight(count: store.notes.count) + 2 * Layout.stripSlop
+        let center = clampedCenter(restY, height: height, in: screen.visibleFrame)
         return NSRect(
             x: screen.frame.maxX - Layout.stripWidth,
             y: center - height / 2,
@@ -346,12 +360,12 @@ final class EdgePanelController {
         )
     }
 
-    /// The deck is centered on where the strip was, so tabs appear right under the cursor.
+    /// The deck is centered on the dots, so each dash grows into the tab right where it was.
     private func deckFrame() -> NSRect {
         guard let screen else { return .zero }
         let visible = screen.visibleFrame
         let height = DeckGeometry.panelHeight(count: store.notes.count, maxHeight: visible.height - 40)
-        let center = clampedCenter(stripY, height: height, in: visible)
+        let center = clampedCenter(restY, height: height, in: visible)
         return NSRect(
             x: screen.frame.maxX - Layout.deckWidth,
             y: center - height / 2,
@@ -360,16 +374,18 @@ final class EdgePanelController {
         )
     }
 
-    /// The deck's height depends on the note count, so re-fit it when notes come and go.
+    /// Both frames depend on the note count, so re-fit them when notes come and go.
     private func observeNoteCount() {
         withObservationTracking {
             _ = store.notes.count
         } onChange: { [weak self] in
             Task { @MainActor in
-                if self?.model.mode == .deck, let frame = self?.deckFrame() {
-                    self?.panel.setFrame(frame, display: true)
+                guard let self else { return }
+                switch self.model.mode {
+                case .deck: self.panel.setFrame(self.deckFrame(), display: true)
+                case .collapsed: self.panel.setFrame(self.stripFrame(), display: true)
                 }
-                self?.observeNoteCount()
+                self.observeNoteCount()
             }
         }
     }
